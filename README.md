@@ -38,19 +38,19 @@ poetry install
 Run tests:
 
 ```bash
-poetry run pytest
+pytest
 ```
 
 Run the Streamlit app:
 
 ```bash
-poetry run streamlit run app/streamlit_app.py
+streamlit run app/streamlit_app.py
 ```
 
 Open the notebook:
 
 ```bash
-poetry run jupyter notebook notebooks/cube_thermal_demo.ipynb
+jupyter notebook notebooks/cube_thermal_demo.ipynb
 ```
 
 ## Notes

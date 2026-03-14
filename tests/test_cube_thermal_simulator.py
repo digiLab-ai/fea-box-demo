@@ -35,6 +35,8 @@ def test_cube_thermal_simulator_forward_runs():
     assert out["ny"] == 5
     assert out["nz"] == 4
     assert len(out["points"]) == 6 * 5 * 4
+    assert len(out["cells"]) == 6 * (6 - 1) * (5 - 1) * (4 - 1)
+    assert len(out["cells"][0]) == 4
     assert len(out["point_data"]["temperature"]) == 6 * 5 * 4
     assert out["max_temperature"] >= out["min_temperature"]
     assert out["temperature_range"] >= 0.0

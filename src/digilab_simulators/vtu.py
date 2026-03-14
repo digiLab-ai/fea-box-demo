@@ -13,7 +13,12 @@ def write_vtu(output: dict, out_path: str | Path) -> Path:
     cell_temperature = output["cell_data"]["temperature"]
 
     connectivity = " ".join(" ".join(str(i) for i in cell) for cell in cells)
-    offsets = " ".join(str(8 * (idx + 1)) for idx in range(len(cells)))
+    offsets_list = []
+    offset = 0
+    for cell in cells:
+        offset += len(cell)
+        offsets_list.append(str(offset))
+    offsets = " ".join(offsets_list)
     types = " ".join(str(t) for t in cell_types)
     points_text = " ".join(f"{p[0]} {p[1]} {p[2]}" for p in points)
     point_temp_text = " ".join(str(v) for v in point_temperature)

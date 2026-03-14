@@ -21,7 +21,7 @@ DEFAULT_MAX_ITERATIONS = 4000
 DEFAULT_TOLERANCE = 1e-6
 DEFAULT_INITIALISATION = "ambient"
 
-VTK_HEXAHEDRON = 12
+VTK_TETRA = 10
 
 
 class CubeThermalSteadyStateConfig(SimulatorConfig):
@@ -47,9 +47,9 @@ class CubeThermalSteadyStateConfig(SimulatorConfig):
     meta: SimulatorMeta = Field(
         default=SimulatorMeta(
             name="CubeThermalSteadyStateSimulator",
-            description="Mock steady-state cube thermal solver with VTU-compatible mesh output",
+            description="Mock steady-state cube thermal solver with VTU-compatible tetrahedral mesh output",
             version="0.1.0",
-            tags=["thermal", "heat-transfer", "3d", "mesh", "vtu", "uq"],
+            tags=["thermal", "heat-transfer", "3d", "mesh", "tetra", "vtu", "uq"],
         )
     )
 
@@ -116,8 +116,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
         self.tolerance = config.tolerance
         self.initialisation = config.initialisation
         self._points = self._build_points()
-        self._cells = self._build_hex_cells()
-        self._cell_types = [VTK_HEXAHEDRON] * len(self._cells)
+        self._cells = self._build_tet_cells()
+        self._cell_types = [VTK_TETRA] * len(self._cells)
 
     def forward(self, X: pd.DataFrame | list[dict[str, float]] | list[list[float]]) -> list[CubeThermalSteadyStateOutput]:
         X_df = self._coerce_inputs_to_dataframe(X)
@@ -175,8 +175,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
         dz = lz / (self.nz - 1)
 
         points = self._build_points(length_x=lx, length_y=ly, length_z=lz)
-        cells = self._build_hex_cells()
-        cell_types = [VTK_HEXAHEDRON] * len(cells)
+        cells = self._build_tet_cells()
+        cell_types = [VTK_TETRA] * len(cells)
 
         T = self._initial_temperature_field(
             initial_temperature=initial_temperature,
@@ -284,6 +284,21 @@ class CubeThermalSteadyStateSimulator(Simulator):
         return pd.DataFrame(
             {"x": points[:, 0], "y": points[:, 1], "z": points[:, 2], "temperature": temperature}
         )
+
+    def mesh_nodes_to_dataframe(
+        self,
+        *,
+        length_x: float | None = None,
+        length_y: float | None = None,
+        length_z: float | None = None,
+    ) -> pd.DataFrame:
+        points = self._build_points(length_x=length_x, length_y=length_y, length_z=length_z)
+        return pd.DataFrame(points, columns=["x", "y", "z"])
+
+    def mesh_elements_to_dataframe(self) -> pd.DataFrame:
+        cells = self._build_tet_cells()
+        column_names = [f"node_{idx}" for idx in range(4)]
+        return pd.DataFrame(cells, columns=column_names, dtype=int)
 
     def _coerce_inputs_to_dataframe(self, X: pd.DataFrame | list[dict[str, float]] | list[list[float]]) -> pd.DataFrame:
         if isinstance(X, pd.DataFrame):
@@ -400,7 +415,7 @@ class CubeThermalSteadyStateSimulator(Simulator):
     def _node_index(self, i: int, j: int, k: int) -> int:
         return i * (self.ny * self.nz) + j * self.nz + k
 
-    def _build_hex_cells(self) -> list[list[int]]:
+    def _build_tet_cells(self) -> list[list[int]]:
         cells: list[list[int]] = []
         for i in range(self.nx - 1):
             for j in range(self.ny - 1):
@@ -413,7 +428,17 @@ class CubeThermalSteadyStateSimulator(Simulator):
                     n101 = self._node_index(i + 1, j, k + 1)
                     n111 = self._node_index(i + 1, j + 1, k + 1)
                     n011 = self._node_index(i, j + 1, k + 1)
-                    cells.append([n000, n100, n110, n010, n001, n101, n111, n011])
+                    # Split each structured cube into 6 tetrahedra sharing the n000-n111 body diagonal.
+                    cells.extend(
+                        [
+                            [n000, n100, n110, n111],
+                            [n000, n110, n010, n111],
+                            [n000, n010, n011, n111],
+                            [n000, n011, n001, n111],
+                            [n000, n001, n101, n111],
+                            [n000, n101, n100, n111],
+                        ]
+                    )
         return cells
 
     def _flatten_temperature_field(self, T: np.ndarray) -> np.ndarray:
