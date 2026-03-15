@@ -26,7 +26,7 @@ DEFAULT_SETUP = {
 }
 
 DEFAULT_SAMPLING = {
-    "method": "lhs",
+    "method": "sobol",
     "n_samples": 10,
     "seed": 42,
     "bounds": {
@@ -231,7 +231,7 @@ with preview_col1:
     st.dataframe(nodes_df.head(8), use_container_width=True, height=220)
     st.download_button(
         "Download nodes CSV",
-        data=nodes_df.to_csv(index=False).encode("utf-8"),
+        data=nodes_df.to_csv(index=False, header=False).encode("utf-8"),
         file_name="cube_mesh_nodes.csv",
         mime="text/csv",
         use_container_width=True,
@@ -241,7 +241,7 @@ with preview_col2:
     st.dataframe(elements_df.head(8), use_container_width=True, height=220)
     st.download_button(
         "Download elements CSV",
-        data=elements_df.to_csv(index=False).encode("utf-8"),
+        data=elements_df.to_csv(index=False, header=False).encode("utf-8"),
         file_name="cube_mesh_elements.csv",
         mime="text/csv",
         use_container_width=True,
