@@ -126,32 +126,33 @@ def _build_simulator(active_setup: dict[str, float | int | str]):
 active_setup = st.session_state.get("active_setup")
 st.markdown(_build_setup_markup(active_setup), unsafe_allow_html=True)
 
-with st.container(border=True):
-    st.subheader("Mesh and Solver Setup")
+setup_expanded = "active_setup" not in st.session_state or st.session_state.get("editing_setup", False)
+with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
     with st.form("setup_form"):
         row1 = st.columns(5)
-        nx = row1[0].slider("nx", 4, 16, int(_setup_from_state()["nx"]))
-        ny = row1[1].slider("ny", 4, 16, int(_setup_from_state()["ny"]))
-        nz = row1[2].slider("nz", 4, 16, int(_setup_from_state()["nz"]))
-        max_iterations = row1[3].slider("max_iterations", 50, 4000, int(_setup_from_state()["max_iterations"]), step=50)
+        current_setup = _setup_from_state()
+        nx = row1[0].slider("nx", 4, 16, int(current_setup["nx"]))
+        ny = row1[1].slider("ny", 4, 16, int(current_setup["ny"]))
+        nz = row1[2].slider("nz", 4, 16, int(current_setup["nz"]))
+        max_iterations = row1[3].slider("max_iterations", 50, 4000, int(current_setup["max_iterations"]), step=50)
         initialisation = row1[4].selectbox(
             "initialisation",
             ["ambient", "linear_hot_to_cold"],
-            index=["ambient", "linear_hot_to_cold"].index(str(_setup_from_state()["initialisation"])),
+            index=["ambient", "linear_hot_to_cold"].index(str(current_setup["initialisation"])),
         )
 
         row2 = st.columns(4)
-        length_x = row2[0].number_input("length_x", value=float(_setup_from_state()["length_x"]), min_value=0.1)
-        length_y = row2[1].number_input("length_y", value=float(_setup_from_state()["length_y"]), min_value=0.1)
-        length_z = row2[2].number_input("length_z", value=float(_setup_from_state()["length_z"]), min_value=0.1)
+        length_x = row2[0].number_input("length_x", value=float(current_setup["length_x"]), min_value=0.1)
+        length_y = row2[1].number_input("length_y", value=float(current_setup["length_y"]), min_value=0.1)
+        length_z = row2[2].number_input("length_z", value=float(current_setup["length_z"]), min_value=0.1)
         ambient_temperature = row2[3].number_input(
             "ambient_temperature [K]",
-            value=float(_setup_from_state()["ambient_temperature"]),
+            value=float(current_setup["ambient_temperature"]),
         )
 
         tolerance = st.number_input(
             "tolerance",
-            value=float(_setup_from_state()["tolerance"]),
+            value=float(current_setup["tolerance"]),
             format="%.1e",
         )
         submitted = st.form_submit_button("Run setup", use_container_width=True)
@@ -169,11 +170,18 @@ with st.container(border=True):
             "tolerance": float(tolerance),
             "initialisation": initialisation,
         }
+        st.session_state["editing_setup"] = False
         st.rerun()
 
 if "active_setup" not in st.session_state:
     st.info("Run setup to build the mesh and enable downloads and solver results.")
     st.stop()
+
+change_setup_col, _ = st.columns([0.22, 0.78])
+with change_setup_col:
+    if st.button("Change setup", use_container_width=True):
+        st.session_state["editing_setup"] = True
+        st.rerun()
 
 active_setup = st.session_state["active_setup"]
 config, simulator = _build_simulator(active_setup)
@@ -190,27 +198,29 @@ with mesh_left:
     st.caption(
         f"{len(nodes_df)} nodes and {len(elements_df)} tetrahedral elements are available from the active setup."
     )
-    download_left, download_right = st.columns(2)
-    download_left.download_button(
-        "Download nodes CSV",
-        data=nodes_df.to_csv(index=False).encode("utf-8"),
-        file_name="cube_mesh_nodes.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-    download_right.download_button(
-        "Download elements CSV",
-        data=elements_df.to_csv(index=False).encode("utf-8"),
-        file_name="cube_mesh_elements.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-
 with mesh_right:
     st.subheader("Mesh preview")
     preview_col1, preview_col2 = st.columns(2)
-    preview_col1.dataframe(nodes_df.head(10), use_container_width=True)
-    preview_col2.dataframe(elements_df.head(10), use_container_width=True)
+    with preview_col1:
+        st.caption("Nodes")
+        st.dataframe(nodes_df.head(8), use_container_width=True, height=220)
+        st.download_button(
+            "Download nodes CSV",
+            data=nodes_df.to_csv(index=False).encode("utf-8"),
+            file_name="cube_mesh_nodes.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with preview_col2:
+        st.caption("Elements")
+        st.dataframe(elements_df.head(8), use_container_width=True, height=220)
+        st.download_button(
+            "Download elements CSV",
+            data=elements_df.to_csv(index=False).encode("utf-8"),
+            file_name="cube_mesh_elements.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
 st.subheader("Inputs")
 col1, col2, col3, col4, col5 = st.columns(5)
