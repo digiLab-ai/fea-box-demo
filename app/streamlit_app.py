@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -36,6 +34,8 @@ DEFAULT_SAMPLING = {
         for spec in DEFAULT_PARAMETER_SPECS
     },
 }
+
+ESTIMATED_SECONDS_PER_SAMPLE = 15.0
 
 st.set_page_config(page_title="Cube Thermal Demo", layout="wide")
 
@@ -154,22 +154,6 @@ def _normalise_csv_filename(name: str, fallback: str) -> str:
     if not cleaned.lower().endswith(".csv"):
         cleaned = f"{cleaned}.csv"
     return cleaned
-
-
-@st.cache_data(show_spinner=False)
-def _estimate_time_per_sample(
-    active_setup: dict[str, float | int | str],
-    sampling_config: dict[str, int | str | dict],
-) -> float:
-    _, simulator = _build_simulator(active_setup)
-    midpoint_input = {
-        spec.name: 0.5 * (spec.lower + spec.upper)
-        for spec in _parameter_specs_from_config(sampling_config)
-    }
-    X = pd.DataFrame([midpoint_input])
-    start = time.perf_counter()
-    simulator.forward(X)
-    return time.perf_counter() - start
 
 
 @st.cache_data(show_spinner=False)
@@ -323,7 +307,7 @@ with st.expander("Sampling", expanded=sampling_expanded):
         "seed": int(seed),
         "bounds": bounds_config,
     }
-    estimated_total_s = _estimate_time_per_sample(active_setup, preview_sampling_config) * int(n_samples)
+    estimated_total_s = ESTIMATED_SECONDS_PER_SAMPLE * int(n_samples)
     run_sampling = st.button(
         f"Run sampling ({_format_seconds(estimated_total_s)})",
         use_container_width=True,
