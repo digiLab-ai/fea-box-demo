@@ -108,50 +108,22 @@ def _parameter_specs_from_config(sampling_config: dict[str, int | str | dict]) -
 
 
 def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> str:
-    if active_setup is None:
-        return """
-        <div class="hero">
-            <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
-            <p style="margin:0;">
-                Steady-state heat transfer in a 3D box with a structured tetrahedral mesh, sampled material and loading inputs, and nodal temperature field outputs.
-            </p>
-            <p style="margin:0.9rem 0 0;">
-                Configure the mesh and solver below to define the problem setup, then run sampling to generate input and field datasets.
-            </p>
-        </div>
-        """
-
-    chips = [
-        ("nx", active_setup["nx"]),
-        ("ny", active_setup["ny"]),
-        ("nz", active_setup["nz"]),
-        ("length_x", active_setup["length_x"]),
-        ("length_y", active_setup["length_y"]),
-        ("length_z", active_setup["length_z"]),
-        ("ambient [K]", active_setup["ambient_temperature"]),
-        ("max_iterations", active_setup["max_iterations"]),
-        ("tolerance", active_setup["tolerance"]),
-        ("init", active_setup["initialisation"]),
-    ]
-    chip_markup = "".join(
-        f"""
-        <div class="hero-chip">
-            <div class="hero-chip-label">{label}</div>
-            <div class="hero-chip-value">{value}</div>
-        </div>
-        """
-        for label, value in chips
-    )
-    return f"""
+    # if active_setup is None:
+    return """
     <div class="hero">
         <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
         <p style="margin:0;">
-            Steady-state heat transfer in a 3D box with a structured tetrahedral mesh, sampled material and loading inputs, and nodal temperature field outputs.
+            Thermal field through a box under steady-state conditions.
         </p>
-        <p style="margin:0.7rem 0 0;">
-            The active problem setup shown below defines the mesh resolution, box dimensions, ambient condition, and solver controls used for every sampled run.
+        <p style="margin:0.5rem 0 0;">
+            <strong>Dynamics:</strong> Solves ∇·(k ∇T) + q = 0 with convective boundaries and heat flux on x=0 face.
         </p>
-        <div class="hero-grid">{chip_markup}</div>
+        <p style="margin:0.5rem 0 0;">
+            <strong>Inputs:</strong> thermal_conductivity (W/m·K), volumetric_heat_source (W/m³), heat_flux_x0 (W/m²), convective_h (W/m²·K), initial_temperature (K).
+        </p>
+        <p style="margin:0.9rem 0 0;">
+            Configure the mesh and solver below to define the problem setup, then run sampling to generate input and field datasets.
+        </p>
     </div>
     """
 
