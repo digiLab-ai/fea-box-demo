@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,7 +29,7 @@ DEFAULT_SETUP = {
 
 DEFAULT_SAMPLING = {
     "method": "sobol",
-    "n_samples": 10,
+    "n_samples": 30,
     "seed": 42,
     "bounds": {
         spec.name: {"lower": spec.lower, "upper": spec.upper}
@@ -131,6 +133,43 @@ def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> st
 def _build_simulator(active_setup: dict[str, float | int | str]):
     config = CubeThermalSteadyStateConfig(**active_setup)
     return config, simulator_factory(config)
+
+
+def _format_seconds(seconds: float) -> str:
+    if seconds < 1:
+        return f"{seconds:.2f}s"
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, remainder = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{int(minutes)}m {int(round(remainder))}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{int(hours)}h {int(minutes)}m"
+
+
+def _normalise_csv_filename(name: str, fallback: str) -> str:
+    cleaned = name.strip()
+    if not cleaned:
+        cleaned = fallback
+    if not cleaned.lower().endswith(".csv"):
+        cleaned = f"{cleaned}.csv"
+    return cleaned
+
+
+@st.cache_data(show_spinner=False)
+def _estimate_time_per_sample(
+    active_setup: dict[str, float | int | str],
+    sampling_config: dict[str, int | str | dict],
+) -> float:
+    _, simulator = _build_simulator(active_setup)
+    midpoint_input = {
+        spec.name: 0.5 * (spec.lower + spec.upper)
+        for spec in _parameter_specs_from_config(sampling_config)
+    }
+    X = pd.DataFrame([midpoint_input])
+    start = time.perf_counter()
+    simulator.forward(X)
+    return time.perf_counter() - start
 
 
 @st.cache_data(show_spinner=False)
@@ -249,36 +288,45 @@ with preview_col2:
 
 sampling_expanded = "sampling_config" not in st.session_state
 with st.expander("Sampling", expanded=sampling_expanded):
-    with st.form("sampling_form"):
-        current_sampling = _sampling_from_state()
-        sampling_cols = st.columns(3)
-        sampling_method = sampling_cols[0].selectbox(
-            "sampling_method",
-            ["lhs", "sobol"],
-            index=["lhs", "sobol"].index(str(current_sampling["method"])),
+    current_sampling = _sampling_from_state()
+    sampling_cols = st.columns(3)
+    sampling_method = sampling_cols[0].selectbox(
+        "sampling_method",
+        ["lhs", "sobol"],
+        index=["lhs", "sobol"].index(str(current_sampling["method"])),
+    )
+    n_samples = sampling_cols[1].slider("n_samples", 1, 100, int(current_sampling["n_samples"]))
+    seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)
+
+    st.caption("Input bounds")
+    bounds_config: dict[str, dict[str, float]] = {}
+    for spec in DEFAULT_PARAMETER_SPECS:
+        current_bounds = current_sampling["bounds"][spec.name]
+        bound_cols = st.columns(3)
+        bound_cols[0].markdown(f"`{spec.name}`")
+        lower = bound_cols[1].number_input(
+            f"{spec.name} lower",
+            value=float(current_bounds["lower"]),
+            format="%.3e" if abs(float(current_bounds["lower"])) >= 1000 else "%.3f",
         )
-        n_samples = sampling_cols[1].slider("n_samples", 1, 32, int(current_sampling["n_samples"]))
-        seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)
+        upper = bound_cols[2].number_input(
+            f"{spec.name} upper",
+            value=float(current_bounds["upper"]),
+            format="%.3e" if abs(float(current_bounds["upper"])) >= 1000 else "%.3f",
+        )
+        bounds_config[spec.name] = {"lower": float(lower), "upper": float(upper)}
 
-        st.caption("Input bounds")
-        bounds_config: dict[str, dict[str, float]] = {}
-        for spec in DEFAULT_PARAMETER_SPECS:
-            current_bounds = current_sampling["bounds"][spec.name]
-            bound_cols = st.columns(3)
-            bound_cols[0].markdown(f"`{spec.name}`")
-            lower = bound_cols[1].number_input(
-                f"{spec.name} lower",
-                value=float(current_bounds["lower"]),
-                format="%.3e" if abs(float(current_bounds["lower"])) >= 1000 else "%.3f",
-            )
-            upper = bound_cols[2].number_input(
-                f"{spec.name} upper",
-                value=float(current_bounds["upper"]),
-                format="%.3e" if abs(float(current_bounds["upper"])) >= 1000 else "%.3f",
-            )
-            bounds_config[spec.name] = {"lower": float(lower), "upper": float(upper)}
-
-        run_sampling = st.form_submit_button("Run sampling", use_container_width=True)
+    preview_sampling_config = {
+        "method": sampling_method,
+        "n_samples": int(n_samples),
+        "seed": int(seed),
+        "bounds": bounds_config,
+    }
+    estimated_total_s = _estimate_time_per_sample(active_setup, preview_sampling_config) * int(n_samples)
+    run_sampling = st.button(
+        f"Run sampling ({_format_seconds(estimated_total_s)})",
+        use_container_width=True,
+    )
 
     if run_sampling:
         invalid_bounds = [
@@ -310,25 +358,41 @@ data_left, data_right = st.columns(2)
 with data_left:
     st.caption("Inputs")
     st.dataframe(sample_inputs_df, use_container_width=True, height=320)
+    inputs_filename = st.text_input(
+        "Inputs CSV filename",
+        value="cube_thermal_sample_inputs",
+        key="inputs_csv_filename",
+    )
+    inputs_download_name = _normalise_csv_filename(inputs_filename, "cube_thermal_sample_inputs")
     st.download_button(
-        "Download inputs CSV",
+        f"Download [{inputs_download_name}] CSV",
         data=sample_inputs_df.to_csv(index=False).encode("utf-8"),
-        file_name="cube_thermal_sample_inputs.csv",
+        file_name=inputs_download_name,
         mime="text/csv",
         use_container_width=True,
     )
 with data_right:
     st.caption("Field data: nodal temperature")
     st.dataframe(field_df, use_container_width=True, height=320)
+    field_filename = st.text_input(
+        "Field data CSV filename",
+        value="cube_thermal_field_data",
+        key="field_csv_filename",
+    )
+    field_download_name = _normalise_csv_filename(field_filename, "cube_thermal_field_data")
     st.download_button(
-        "Download field data CSV",
+        f"Download [{field_download_name}] CSV",
         data=field_df.to_csv(index=False).encode("utf-8"),
-        file_name="cube_thermal_field_data.csv",
+        file_name=field_download_name,
         mime="text/csv",
         use_container_width=True,
     )
 
-selected_sample = st.slider("Sample index", 0, len(outputs) - 1, 0)
+if len(outputs) == 1:
+    selected_sample = 0
+    st.caption("Sample index: 0")
+else:
+    selected_sample = st.slider("Sample index", 0, len(outputs) - 1, 0)
 selected_output = outputs[selected_sample]
 
 temperature = np.array(selected_output["point_data"]["temperature"]).reshape(config.nx, config.ny, config.nz)
