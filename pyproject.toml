@@ -27,6 +27,7 @@ where = ["src"]
 [tool.poetry]
 packages = [
     { include = "digilab_simulators", from = "src" },
+    { include = "digilab_samplers", from = "src" },
 ]
 
 [tool.pytest.ini_options]

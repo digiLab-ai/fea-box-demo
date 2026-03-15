@@ -8,12 +8,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from digilab_samplers import sample_parameter_space
 from digilab_simulators.simulators import CubeThermalSteadyStateConfig, simulator_factory
 from digilab_simulators.vtu import write_vtu
 
 INDIGO = "#16425B"
 KEPPEL = "#16D5C2"
-KEY_LIME = "#EBF38B"
 LIGHT_BG = "#F7FAFC"
 
 DEFAULT_SETUP = {
@@ -27,6 +27,12 @@ DEFAULT_SETUP = {
     "max_iterations": 1500,
     "tolerance": 1e-5,
     "initialisation": "linear_hot_to_cold",
+}
+
+DEFAULT_SAMPLING = {
+    "method": "lhs",
+    "n_samples": 10,
+    "seed": 42,
 }
 
 st.set_page_config(page_title="Cube Thermal Demo", layout="wide")
@@ -72,13 +78,20 @@ def _setup_from_state() -> dict[str, float | int | str]:
     return dict(st.session_state.get("active_setup", DEFAULT_SETUP))
 
 
-def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> str:
+def _sampling_from_state() -> dict[str, int | str]:
+    return dict(st.session_state.get("sampling_config", DEFAULT_SAMPLING))
+
+
+def _build_setup_markup(
+    active_setup: dict[str, float | int | str] | None,
+    sampling_config: dict[str, int | str] | None,
+) -> str:
     if active_setup is None:
         return """
         <div class="hero">
             <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
             <p style="margin:0;">
-                Mock 3D thermal simulator with structured mesh output, summary metrics, 2D slices, and VTU export.
+                Mock 3D thermal simulator with structured mesh output, batch sampling, nodal temperature fields, 2D slices, and VTU export.
             </p>
             <p style="margin:0.9rem 0 0;">
                 No setup has been run yet. Configure the mesh and solver below, then press <strong>Run setup</strong>.
@@ -96,8 +109,16 @@ def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> st
         ("ambient [K]", active_setup["ambient_temperature"]),
         ("max_iterations", active_setup["max_iterations"]),
         ("tolerance", active_setup["tolerance"]),
-        ("initialisation", active_setup["initialisation"]),
+        ("init", active_setup["initialisation"]),
     ]
+    if sampling_config is not None:
+        chips.extend(
+            [
+                ("sampling", sampling_config["method"]),
+                ("samples", sampling_config["n_samples"]),
+                ("seed", sampling_config["seed"]),
+            ]
+        )
     chip_markup = "".join(
         f"""
         <div class="hero-chip">
@@ -111,7 +132,7 @@ def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> st
     <div class="hero">
         <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
         <p style="margin:0;">
-            Mock 3D thermal simulator with structured mesh output, summary metrics, 2D slices, and VTU export.
+            Mock 3D thermal simulator with structured mesh output, batch sampling, nodal temperature fields, 2D slices, and VTU export.
         </p>
         <div class="hero-grid">{chip_markup}</div>
     </div>
@@ -123,14 +144,35 @@ def _build_simulator(active_setup: dict[str, float | int | str]):
     return config, simulator_factory(config)
 
 
+@st.cache_data(show_spinner=False)
+def _sample_and_evaluate(
+    active_setup: dict[str, float | int | str],
+    sampling_config: dict[str, int | str],
+) -> tuple[pd.DataFrame, list[dict], pd.DataFrame]:
+    config, simulator = _build_simulator(active_setup)
+    sample_inputs_df = sample_parameter_space(
+        method=str(sampling_config["method"]),
+        n_samples=int(sampling_config["n_samples"]),
+        seed=int(sampling_config["seed"]),
+    )
+    outputs = simulator.forward(sample_inputs_df)
+    field_df = pd.DataFrame(
+        [output["point_data"]["temperature"] for output in outputs],
+        columns=[f"node_{idx}" for idx in range(len(outputs[0]["point_data"]["temperature"]))],
+    )
+    return sample_inputs_df, outputs, field_df
+
+
 active_setup = st.session_state.get("active_setup")
-st.markdown(_build_setup_markup(active_setup), unsafe_allow_html=True)
+sampling_config = st.session_state.get("sampling_config")
+st.markdown(_build_setup_markup(active_setup, sampling_config), unsafe_allow_html=True)
 
 setup_expanded = "active_setup" not in st.session_state or st.session_state.get("editing_setup", False)
 with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
     with st.form("setup_form"):
-        row1 = st.columns(5)
         current_setup = _setup_from_state()
+
+        row1 = st.columns(5)
         nx = row1[0].slider("nx", 4, 16, int(current_setup["nx"]))
         ny = row1[1].slider("ny", 4, 16, int(current_setup["ny"]))
         nz = row1[2].slider("nz", 4, 16, int(current_setup["nz"]))
@@ -150,11 +192,16 @@ with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
             value=float(current_setup["ambient_temperature"]),
         )
 
-        tolerance = st.number_input(
+        row3 = st.columns(4)
+        tolerance = row3[0].number_input(
             "tolerance",
             value=float(current_setup["tolerance"]),
             format="%.1e",
         )
+        row3[1].empty()
+        row3[2].empty()
+        row3[3].empty()
+
         submitted = st.form_submit_button("Run setup", use_container_width=True)
 
     if submitted:
@@ -170,21 +217,24 @@ with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
             "tolerance": float(tolerance),
             "initialisation": initialisation,
         }
+        st.session_state.pop("sampling_config", None)
         st.session_state["editing_setup"] = False
         st.rerun()
 
 if "active_setup" not in st.session_state:
-    st.info("Run setup to build the mesh and enable downloads and solver results.")
+    st.info("Run setup to build the mesh and enable sampling.")
     st.stop()
 
 change_setup_col, _ = st.columns([0.22, 0.78])
 with change_setup_col:
     if st.button("Change setup", use_container_width=True):
         st.session_state["editing_setup"] = True
+        st.session_state.pop("sampling_config", None)
         st.rerun()
 
 active_setup = st.session_state["active_setup"]
 config, simulator = _build_simulator(active_setup)
+
 nodes_df = simulator.mesh_nodes_to_dataframe(
     length_x=config.length_x,
     length_y=config.length_y,
@@ -192,87 +242,88 @@ nodes_df = simulator.mesh_nodes_to_dataframe(
 )
 elements_df = simulator.mesh_elements_to_dataframe()
 
-mesh_left, mesh_right = st.columns([1.2, 1])
-with mesh_left:
-    st.subheader("Mesh exports")
-    st.caption(
-        f"{len(nodes_df)} nodes and {len(elements_df)} tetrahedral elements are available from the active setup."
-    )
-with mesh_right:
-    st.subheader("Mesh preview")
-    preview_col1, preview_col2 = st.columns(2)
-    with preview_col1:
-        st.caption("Nodes")
-        st.dataframe(nodes_df.head(8), use_container_width=True, height=220)
-        st.download_button(
-            "Download nodes CSV",
-            data=nodes_df.to_csv(index=False).encode("utf-8"),
-            file_name="cube_mesh_nodes.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    with preview_col2:
-        st.caption("Elements")
-        st.dataframe(elements_df.head(8), use_container_width=True, height=220)
-        st.download_button(
-            "Download elements CSV",
-            data=elements_df.to_csv(index=False).encode("utf-8"),
-            file_name="cube_mesh_elements.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-st.subheader("Inputs")
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    thermal_conductivity = st.number_input("thermal_conductivity [W/m/K]", value=12.0, min_value=0.1)
-with col2:
-    volumetric_heat_source = st.number_input("volumetric_heat_source [W/m³]", value=2.0e4, format="%.3e")
-with col3:
-    heat_flux_x0 = st.number_input("heat_flux_x0 [W/m²]", value=1.5e4, format="%.3e")
-with col4:
-    convective_h = st.number_input("convective_h [W/m²/K]", value=8.0, min_value=0.0)
-with col5:
-    initial_temperature = st.number_input("initial_temperature [K]", value=293.15)
-
-X = pd.DataFrame(
-    [
-        {
-            "thermal_conductivity": thermal_conductivity,
-            "volumetric_heat_source": volumetric_heat_source,
-            "heat_flux_x0": heat_flux_x0,
-            "convective_h": convective_h,
-            "initial_temperature": initial_temperature,
-        }
-    ]
-)
-
-output = simulator.forward(X)[0]
-summary_df = simulator.outputs_to_summary_dataframe([output])
-point_df = simulator.output_to_point_dataframe(output)
-
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Centre temperature [K]", f"{output['centre_temperature']:.2f}")
-m2.metric("Temperature range [K]", f"{output['temperature_range']:.2f}")
-m3.metric("Iterations", output["iterations"])
-m4.metric("Converged", "Yes" if output["converged"] else "No")
-
-left, right = st.columns([1.1, 1])
-with left:
-    st.subheader("Summary")
-    st.dataframe(summary_df, use_container_width=True)
+st.subheader("Mesh preview")
+preview_col1, preview_col2 = st.columns(2)
+with preview_col1:
+    st.caption("Nodes")
+    st.dataframe(nodes_df.head(8), use_container_width=True, height=220)
     st.download_button(
-        "Download summary CSV",
-        data=summary_df.to_csv(index=False).encode("utf-8"),
-        file_name="cube_thermal_summary.csv",
+        "Download nodes CSV",
+        data=nodes_df.to_csv(index=False).encode("utf-8"),
+        file_name="cube_mesh_nodes.csv",
         mime="text/csv",
+        use_container_width=True,
+    )
+with preview_col2:
+    st.caption("Elements")
+    st.dataframe(elements_df.head(8), use_container_width=True, height=220)
+    st.download_button(
+        "Download elements CSV",
+        data=elements_df.to_csv(index=False).encode("utf-8"),
+        file_name="cube_mesh_elements.csv",
+        mime="text/csv",
+        use_container_width=True,
     )
 
-with right:
-    st.subheader("Point data preview")
-    st.dataframe(point_df.head(20), use_container_width=True)
+sampling_expanded = "sampling_config" not in st.session_state
+with st.expander("Sampling", expanded=sampling_expanded):
+    with st.form("sampling_form"):
+        current_sampling = _sampling_from_state()
+        sampling_cols = st.columns(3)
+        sampling_method = sampling_cols[0].selectbox(
+            "sampling_method",
+            ["lhs", "sobol"],
+            index=["lhs", "sobol"].index(str(current_sampling["method"])),
+        )
+        n_samples = sampling_cols[1].slider("n_samples", 2, 32, int(current_sampling["n_samples"]))
+        seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)
+        run_sampling = st.form_submit_button("Run sampling", use_container_width=True)
 
-temperature = np.array(output["point_data"]["temperature"]).reshape(config.nx, config.ny, config.nz)
+    if run_sampling:
+        st.session_state["sampling_config"] = {
+            "method": sampling_method,
+            "n_samples": int(n_samples),
+            "seed": int(seed),
+        }
+        st.rerun()
+
+if "sampling_config" not in st.session_state:
+    st.info("Choose a sampling method and sample count, then run sampling to generate the input and field-data tables.")
+    st.stop()
+
+sampling_config = st.session_state["sampling_config"]
+sample_inputs_df, outputs, field_df = _sample_and_evaluate(active_setup, sampling_config)
+
+st.subheader("Sampled data")
+st.caption(
+    f"{len(sample_inputs_df)} samples generated with {sampling_config['method'].upper()} on the active mesh."
+)
+data_left, data_right = st.columns(2)
+with data_left:
+    st.caption("Inputs")
+    st.dataframe(sample_inputs_df, use_container_width=True, height=320)
+    st.download_button(
+        "Download inputs CSV",
+        data=sample_inputs_df.to_csv(index=False).encode("utf-8"),
+        file_name="cube_thermal_sample_inputs.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+with data_right:
+    st.caption("Field data: nodal temperature")
+    st.dataframe(field_df, use_container_width=True, height=320)
+    st.download_button(
+        "Download field data CSV",
+        data=field_df.to_csv(index=False).encode("utf-8"),
+        file_name="cube_thermal_field_data.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+selected_sample = st.slider("Sample index", 0, len(outputs) - 1, 0)
+selected_output = outputs[selected_sample]
+
+temperature = np.array(selected_output["point_data"]["temperature"]).reshape(config.nx, config.ny, config.nz)
 mid_k = config.nz // 2
 slice_xy = temperature[:, :, mid_k]
 
@@ -280,24 +331,17 @@ fig1, ax1 = plt.subplots(figsize=(6, 4.5))
 im = ax1.imshow(slice_xy.T, origin="lower", aspect="auto", cmap="inferno")
 ax1.set_xlabel("x node index")
 ax1.set_ylabel("y node index")
-ax1.set_title("Mid-plane temperature slice")
+ax1.set_title(f"Mid-plane temperature slice for sample {selected_sample}")
 fig1.colorbar(im, ax=ax1, label="Temperature [K]")
 st.pyplot(fig1)
 
-fig2, ax2 = plt.subplots(figsize=(6, 4.5))
-ax2.scatter(point_df["x"], point_df["temperature"], s=18)
-ax2.set_xlabel("x [m]")
-ax2.set_ylabel("Temperature [K]")
-ax2.set_title("Point temperature vs x")
-st.pyplot(fig2)
-
 st.subheader("VTU export")
 with tempfile.TemporaryDirectory() as tmpdir:
-    out_path = Path(tmpdir) / "cube_thermal_output.vtu"
-    write_vtu(output, out_path)
+    out_path = Path(tmpdir) / f"cube_thermal_output_sample_{selected_sample}.vtu"
+    write_vtu(selected_output, out_path)
     st.download_button(
-        "Download VTU",
+        "Download selected sample VTU",
         data=out_path.read_bytes(),
-        file_name="cube_thermal_output.vtu",
+        file_name=out_path.name,
         mime="application/octet-stream",
     )
