@@ -9,6 +9,7 @@ from typeguard import typechecked
 
 from .base import Simulator, SimulatorConfig, SimulatorMeta
 
+# TODO replace this with the simulator from the simulators package once it's available as a dependency
 
 DEFAULT_NX = 8
 DEFAULT_NY = 8

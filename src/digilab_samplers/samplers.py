@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+# TODO replace this with the sampler from the samplers package once it's available as a dependency
 
 @dataclass(frozen=True)
 class ParameterSpec:
