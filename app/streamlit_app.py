@@ -290,10 +290,11 @@ sampling_expanded = "sampling_config" not in st.session_state
 with st.expander("Sampling", expanded=sampling_expanded):
     current_sampling = _sampling_from_state()
     sampling_cols = st.columns(3)
+    sampling_options = ["mc", "lhs", "sobol"]
     sampling_method = sampling_cols[0].selectbox(
         "sampling_method",
-        ["lhs", "sobol"],
-        index=["lhs", "sobol"].index(str(current_sampling["method"])),
+        sampling_options,
+        index=sampling_options.index(str(current_sampling["method"])),
     )
     n_samples = sampling_cols[1].slider("n_samples", 1, 100, int(current_sampling["n_samples"]))
     seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)

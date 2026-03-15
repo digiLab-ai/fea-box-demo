@@ -36,6 +36,8 @@ def sample_parameter_space(
 
     if method == "lhs":
         unit_samples = _latin_hypercube(n_samples=n_samples, dimension=dimension, seed=seed)
+    elif method == "mc":
+        unit_samples = _monte_carlo(n_samples=n_samples, dimension=dimension, seed=seed)
     elif method == "sobol":
         unit_samples = _sobol_sequence(n_samples=n_samples, dimension=dimension)
     else:
@@ -54,6 +56,11 @@ def _latin_hypercube(*, n_samples: int, dimension: int, seed: int) -> np.ndarray
         perm = rng.permutation(n_samples)
         samples[:, dim] = (perm + rng.random(n_samples)) / n_samples
     return samples
+
+
+def _monte_carlo(*, n_samples: int, dimension: int, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return rng.random((n_samples, dimension))
 
 
 def _sobol_sequence(*, n_samples: int, dimension: int) -> np.ndarray:
