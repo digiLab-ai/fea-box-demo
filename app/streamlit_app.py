@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-import tempfile
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,7 +7,6 @@ import streamlit as st
 
 from digilab_samplers import sample_parameter_space
 from digilab_simulators.simulators import CubeThermalSteadyStateConfig, simulator_factory
-from digilab_simulators.vtu import write_vtu
 
 INDIGO = "#16425B"
 KEPPEL = "#16D5C2"
@@ -82,19 +78,16 @@ def _sampling_from_state() -> dict[str, int | str]:
     return dict(st.session_state.get("sampling_config", DEFAULT_SAMPLING))
 
 
-def _build_setup_markup(
-    active_setup: dict[str, float | int | str] | None,
-    sampling_config: dict[str, int | str] | None,
-) -> str:
+def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> str:
     if active_setup is None:
         return """
         <div class="hero">
             <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
             <p style="margin:0;">
-                Mock 3D thermal simulator with structured mesh output, batch sampling, nodal temperature fields, 2D slices, and VTU export.
+                Steady-state heat transfer in a 3D box with a structured tetrahedral mesh, sampled material and loading inputs, and nodal temperature field outputs.
             </p>
             <p style="margin:0.9rem 0 0;">
-                No setup has been run yet. Configure the mesh and solver below, then press <strong>Run setup</strong>.
+                Configure the mesh and solver below to define the problem setup, then run sampling to generate input and field datasets.
             </p>
         </div>
         """
@@ -111,14 +104,6 @@ def _build_setup_markup(
         ("tolerance", active_setup["tolerance"]),
         ("init", active_setup["initialisation"]),
     ]
-    if sampling_config is not None:
-        chips.extend(
-            [
-                ("sampling", sampling_config["method"]),
-                ("samples", sampling_config["n_samples"]),
-                ("seed", sampling_config["seed"]),
-            ]
-        )
     chip_markup = "".join(
         f"""
         <div class="hero-chip">
@@ -132,7 +117,10 @@ def _build_setup_markup(
     <div class="hero">
         <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
         <p style="margin:0;">
-            Mock 3D thermal simulator with structured mesh output, batch sampling, nodal temperature fields, 2D slices, and VTU export.
+            Steady-state heat transfer in a 3D box with a structured tetrahedral mesh, sampled material and loading inputs, and nodal temperature field outputs.
+        </p>
+        <p style="margin:0.7rem 0 0;">
+            The active problem setup shown below defines the mesh resolution, box dimensions, ambient condition, and solver controls used for every sampled run.
         </p>
         <div class="hero-grid">{chip_markup}</div>
     </div>
@@ -164,8 +152,7 @@ def _sample_and_evaluate(
 
 
 active_setup = st.session_state.get("active_setup")
-sampling_config = st.session_state.get("sampling_config")
-st.markdown(_build_setup_markup(active_setup, sampling_config), unsafe_allow_html=True)
+st.markdown(_build_setup_markup(active_setup), unsafe_allow_html=True)
 
 setup_expanded = "active_setup" not in st.session_state or st.session_state.get("editing_setup", False)
 with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
@@ -224,13 +211,6 @@ with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
 if "active_setup" not in st.session_state:
     st.info("Run setup to build the mesh and enable sampling.")
     st.stop()
-
-change_setup_col, _ = st.columns([0.22, 0.78])
-with change_setup_col:
-    if st.button("Change setup", use_container_width=True):
-        st.session_state["editing_setup"] = True
-        st.session_state.pop("sampling_config", None)
-        st.rerun()
 
 active_setup = st.session_state["active_setup"]
 config, simulator = _build_simulator(active_setup)
@@ -334,14 +314,3 @@ ax1.set_ylabel("y node index")
 ax1.set_title(f"Mid-plane temperature slice for sample {selected_sample}")
 fig1.colorbar(im, ax=ax1, label="Temperature [K]")
 st.pyplot(fig1)
-
-st.subheader("VTU export")
-with tempfile.TemporaryDirectory() as tmpdir:
-    out_path = Path(tmpdir) / f"cube_thermal_output_sample_{selected_sample}.vtu"
-    write_vtu(selected_output, out_path)
-    st.download_button(
-        "Download selected sample VTU",
-        data=out_path.read_bytes(),
-        file_name=out_path.name,
-        mime="application/octet-stream",
-    )
