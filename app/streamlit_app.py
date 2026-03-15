@@ -257,7 +257,7 @@ with st.expander("Sampling", expanded=sampling_expanded):
             ["lhs", "sobol"],
             index=["lhs", "sobol"].index(str(current_sampling["method"])),
         )
-        n_samples = sampling_cols[1].slider("n_samples", 2, 32, int(current_sampling["n_samples"]))
+        n_samples = sampling_cols[1].slider("n_samples", 1, 32, int(current_sampling["n_samples"]))
         seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)
 
         st.caption("Input bounds")
