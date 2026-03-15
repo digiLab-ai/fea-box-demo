@@ -251,7 +251,7 @@ st.subheader("Mesh preview")
 preview_col1, preview_col2 = st.columns(2)
 with preview_col1:
     st.caption("Nodes")
-    st.dataframe(nodes_df.head(8), use_container_width=True, height=220)
+    st.dataframe(nodes_df, use_container_width=True, height=180)
     st.download_button(
         "Download nodes CSV",
         data=nodes_df.to_csv(index=False, header=False).encode("utf-8"),
@@ -261,7 +261,7 @@ with preview_col1:
     )
 with preview_col2:
     st.caption("Elements")
-    st.dataframe(elements_df.head(8), use_container_width=True, height=220)
+    st.dataframe(elements_df, use_container_width=True, height=180)
     st.download_button(
         "Download elements CSV",
         data=elements_df.to_csv(index=False, header=False).encode("utf-8"),
@@ -309,7 +309,7 @@ with st.expander("Sampling", expanded=sampling_expanded):
     }
     estimated_total_s = ESTIMATED_SECONDS_PER_SAMPLE * int(n_samples)
     run_sampling = st.button(
-        f"Run sampling ({_format_seconds(estimated_total_s)})",
+        f"Run sampling (~{_format_seconds(estimated_total_s)})",
         use_container_width=True,
     )
 
@@ -345,14 +345,14 @@ with data_left:
     st.dataframe(sample_inputs_df, use_container_width=True, height=320)
     inputs_filename = st.text_input(
         "Inputs CSV filename",
-        value="cube_thermal_sample_inputs",
+        value="input_heating",
         key="inputs_csv_filename",
     )
-    inputs_download_name = _normalise_csv_filename(inputs_filename, "cube_thermal_sample_inputs")
+    inputs_download_name = _normalise_csv_filename(inputs_filename, "input_heating")
     st.download_button(
-        f"Download [{inputs_download_name}] CSV",
+        f"Download: {inputs_download_name}",
         data=sample_inputs_df.to_csv(index=False).encode("utf-8"),
-        file_name=inputs_download_name,
+        file_name=inputs_download_name, 
         mime="text/csv",
         use_container_width=True,
     )
@@ -361,12 +361,12 @@ with data_right:
     st.dataframe(field_df, use_container_width=True, height=320)
     field_filename = st.text_input(
         "Field data CSV filename",
-        value="cube_thermal_field_data",
+        value="output_temperature",
         key="field_csv_filename",
     )
-    field_download_name = _normalise_csv_filename(field_filename, "cube_thermal_field_data")
+    field_download_name = _normalise_csv_filename(field_filename, "output_temperature")
     st.download_button(
-        f"Download [{field_download_name}] CSV",
+        f"Download: {field_download_name}",
         data=field_df.to_csv(index=False).encode("utf-8"),
         file_name=field_download_name,
         mime="text/csv",
