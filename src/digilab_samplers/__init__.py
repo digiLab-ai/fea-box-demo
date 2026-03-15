@@ -1,3 +1,3 @@
-from .samplers import sample_parameter_space
+from .samplers import DEFAULT_PARAMETER_SPECS, ParameterSpec, sample_parameter_space
 
-__all__ = ["sample_parameter_space"]
+__all__ = ["DEFAULT_PARAMETER_SPECS", "ParameterSpec", "sample_parameter_space"]

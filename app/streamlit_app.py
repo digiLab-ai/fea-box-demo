@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from digilab_samplers import sample_parameter_space
+from digilab_samplers import DEFAULT_PARAMETER_SPECS, ParameterSpec, sample_parameter_space
 from digilab_simulators.simulators import CubeThermalSteadyStateConfig, simulator_factory
 
 INDIGO = "#16425B"
@@ -29,6 +29,10 @@ DEFAULT_SAMPLING = {
     "method": "lhs",
     "n_samples": 10,
     "seed": 42,
+    "bounds": {
+        spec.name: {"lower": spec.lower, "upper": spec.upper}
+        for spec in DEFAULT_PARAMETER_SPECS
+    },
 }
 
 st.set_page_config(page_title="Cube Thermal Demo", layout="wide")
@@ -74,8 +78,33 @@ def _setup_from_state() -> dict[str, float | int | str]:
     return dict(st.session_state.get("active_setup", DEFAULT_SETUP))
 
 
-def _sampling_from_state() -> dict[str, int | str]:
-    return dict(st.session_state.get("sampling_config", DEFAULT_SAMPLING))
+def _sampling_from_state() -> dict[str, int | str | dict]:
+    current = st.session_state.get("sampling_config", {})
+    merged = {
+        "method": current.get("method", DEFAULT_SAMPLING["method"]),
+        "n_samples": current.get("n_samples", DEFAULT_SAMPLING["n_samples"]),
+        "seed": current.get("seed", DEFAULT_SAMPLING["seed"]),
+        "bounds": {
+            spec.name: {
+                "lower": current.get("bounds", {}).get(spec.name, {}).get("lower", spec.lower),
+                "upper": current.get("bounds", {}).get(spec.name, {}).get("upper", spec.upper),
+            }
+            for spec in DEFAULT_PARAMETER_SPECS
+        },
+    }
+    return merged
+
+
+def _parameter_specs_from_config(sampling_config: dict[str, int | str | dict]) -> list[ParameterSpec]:
+    bounds = sampling_config["bounds"]
+    return [
+        ParameterSpec(
+            name=spec.name,
+            lower=float(bounds[spec.name]["lower"]),
+            upper=float(bounds[spec.name]["upper"]),
+        )
+        for spec in DEFAULT_PARAMETER_SPECS
+    ]
 
 
 def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> str:
@@ -135,13 +164,14 @@ def _build_simulator(active_setup: dict[str, float | int | str]):
 @st.cache_data(show_spinner=False)
 def _sample_and_evaluate(
     active_setup: dict[str, float | int | str],
-    sampling_config: dict[str, int | str],
+    sampling_config: dict[str, int | str | dict],
 ) -> tuple[pd.DataFrame, list[dict], pd.DataFrame]:
     config, simulator = _build_simulator(active_setup)
     sample_inputs_df = sample_parameter_space(
         method=str(sampling_config["method"]),
         n_samples=int(sampling_config["n_samples"]),
         seed=int(sampling_config["seed"]),
+        specs=_parameter_specs_from_config(sampling_config),
     )
     outputs = simulator.forward(sample_inputs_df)
     field_df = pd.DataFrame(
@@ -257,15 +287,41 @@ with st.expander("Sampling", expanded=sampling_expanded):
         )
         n_samples = sampling_cols[1].slider("n_samples", 2, 32, int(current_sampling["n_samples"]))
         seed = sampling_cols[2].number_input("seed", min_value=0, value=int(current_sampling["seed"]), step=1)
+
+        st.caption("Input bounds")
+        bounds_config: dict[str, dict[str, float]] = {}
+        for spec in DEFAULT_PARAMETER_SPECS:
+            current_bounds = current_sampling["bounds"][spec.name]
+            bound_cols = st.columns(3)
+            bound_cols[0].markdown(f"`{spec.name}`")
+            lower = bound_cols[1].number_input(
+                f"{spec.name} lower",
+                value=float(current_bounds["lower"]),
+                format="%.3e" if abs(float(current_bounds["lower"])) >= 1000 else "%.3f",
+            )
+            upper = bound_cols[2].number_input(
+                f"{spec.name} upper",
+                value=float(current_bounds["upper"]),
+                format="%.3e" if abs(float(current_bounds["upper"])) >= 1000 else "%.3f",
+            )
+            bounds_config[spec.name] = {"lower": float(lower), "upper": float(upper)}
+
         run_sampling = st.form_submit_button("Run sampling", use_container_width=True)
 
     if run_sampling:
-        st.session_state["sampling_config"] = {
-            "method": sampling_method,
-            "n_samples": int(n_samples),
-            "seed": int(seed),
-        }
-        st.rerun()
+        invalid_bounds = [
+            name for name, bound in bounds_config.items() if float(bound["lower"]) >= float(bound["upper"])
+        ]
+        if invalid_bounds:
+            st.error(f"Each lower bound must be less than its upper bound. Check: {', '.join(invalid_bounds)}")
+        else:
+            st.session_state["sampling_config"] = {
+                "method": sampling_method,
+                "n_samples": int(n_samples),
+                "seed": int(seed),
+                "bounds": bounds_config,
+            }
+            st.rerun()
 
 if "sampling_config" not in st.session_state:
     st.info("Choose a sampling method and sample count, then run sampling to generate the input and field-data tables.")
