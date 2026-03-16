@@ -118,10 +118,10 @@ def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> st
             Thermal field through a box under steady-state conditions.
         </p>
         <p style="margin:0.5rem 0 0;">
-            <strong>Dynamics:</strong> Solves ∇·(k ∇T) + q = 0 with convective boundaries and heat flux on x=0 face.
+            <strong>Dynamics:</strong> Solves ∇·(k ∇T) + q = 0 with convective boundaries. The x=0 face has convection to an external heat source at T_source.
         </p>
         <p style="margin:0.5rem 0 0;">
-            <strong>Inputs:</strong> thermal_conductivity (W/m·K), volumetric_heat_source (W/m³), heat_flux_x0 (W/m²), convective_h (W/m²·K), initial_temperature (K).
+            <strong>Inputs:</strong> thermal_conductivity (W/m·K), volumetric_heat_source (W/m³), T_source (K), convective_h (W/m²·K), initial_temperature (K).
         </p>
         <p style="margin:0.9rem 0 0;">
             Configure the mesh and solver below to define the problem setup, then run sampling to generate input and field datasets.

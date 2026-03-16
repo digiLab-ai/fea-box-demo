@@ -8,8 +8,8 @@ def test_lhs_sampler_returns_expected_shape_and_columns():
     assert df.shape == (10, 5)
     assert list(df.columns) == [
         "thermal_conductivity",
-        "volumetric_heat_source",
-        "heat_flux_x0",
+        "heat_source_power",
+        "heat_source_distance",
         "convective_h",
         "initial_temperature",
     ]
@@ -20,8 +20,8 @@ def test_mc_sampler_returns_expected_shape_and_columns():
     assert df.shape == (10, 5)
     assert list(df.columns) == [
         "thermal_conductivity",
-        "volumetric_heat_source",
-        "heat_flux_x0",
+        "heat_source_power",
+        "heat_source_distance",
         "convective_h",
         "initial_temperature",
     ]
@@ -32,8 +32,8 @@ def test_sobol_sampler_returns_expected_shape_and_columns():
     assert df.shape == (10, 5)
     assert list(df.columns) == [
         "thermal_conductivity",
-        "volumetric_heat_source",
-        "heat_flux_x0",
+        "heat_source_power",
+        "heat_source_distance",
         "convective_h",
         "initial_temperature",
     ]

@@ -48,7 +48,7 @@ class CubeThermalSteadyStateConfig(SimulatorConfig):
     meta: SimulatorMeta = Field(
         default=SimulatorMeta(
             name="CubeThermalSteadyStateSimulator",
-            description="Mock steady-state cube thermal solver with VTU-compatible tetrahedral mesh output",
+            description="Mock steady-state cube thermal solver with external heat source at distance from x=0 face, VTU-compatible tetrahedral mesh output",
             version="0.1.0",
             tags=["thermal", "heat-transfer", "3d", "mesh", "tetra", "vtu", "uq"],
         )
@@ -88,8 +88,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
 
     REQUIRED_INPUT_COLUMNS = [
         "thermal_conductivity",
-        "volumetric_heat_source",
-        "heat_flux_x0",
+        "heat_source_power",
+        "heat_source_distance",
         "convective_h",
         "initial_temperature",
     ]
@@ -132,8 +132,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
                 self.evaluate(
                     sample_index=sample_index,
                     thermal_conductivity=float(row["thermal_conductivity"]),
-                    volumetric_heat_source=float(row["volumetric_heat_source"]),
-                    heat_flux_x0=float(row["heat_flux_x0"]),
+                    heat_source_power=float(row["heat_source_power"]),
+                    heat_source_distance=float(row["heat_source_distance"]),
                     convective_h=float(row["convective_h"]),
                     initial_temperature=float(row["initial_temperature"]),
                     ambient_temperature=float(row.get("ambient_temperature", self.ambient_temperature)),
@@ -149,8 +149,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
         *,
         sample_index: int,
         thermal_conductivity: float,
-        volumetric_heat_source: float,
-        heat_flux_x0: float,
+        heat_source_power: float,
+        heat_source_distance: float,
         convective_h: float,
         initial_temperature: float,
         ambient_temperature: float | None = None,
@@ -160,10 +160,10 @@ class CubeThermalSteadyStateSimulator(Simulator):
     ) -> CubeThermalSteadyStateOutput:
         if thermal_conductivity <= 0:
             raise ValueError("thermal_conductivity must be positive.")
+        if heat_source_distance <= 0:
+            raise ValueError("heat_source_distance must be positive.")
         if convective_h < 0:
             raise ValueError("convective_h must be non-negative.")
-        if ambient_temperature is None:
-            ambient_temperature = self.ambient_temperature
 
         lx = self.length_x if length_x is None else length_x
         ly = self.length_y if length_y is None else length_y
@@ -171,11 +171,16 @@ class CubeThermalSteadyStateSimulator(Simulator):
         if lx <= 0 or ly <= 0 or lz <= 0:
             raise ValueError("All lengths must be positive.")
 
-        dx = lx / (self.nx - 1)
+        if ambient_temperature is None:
+            ambient_temperature = self.ambient_temperature
+
+        air_conductivity = 0.025  # W/m·K for air at room temperature
+
+        dx = (lx + heat_source_distance) / (self.nx - 1)
         dy = ly / (self.ny - 1)
         dz = lz / (self.nz - 1)
 
-        points = self._build_points(length_x=lx, length_y=ly, length_z=lz)
+        points = self._build_points(length_x=lx, length_y=ly, length_z=lz, heat_source_distance=heat_source_distance)
         cells = self._build_tet_cells()
         cell_types = [VTK_TETRA] * len(cells)
 
@@ -198,13 +203,15 @@ class CubeThermalSteadyStateSimulator(Simulator):
                             j=j,
                             k=k,
                             thermal_conductivity=thermal_conductivity,
-                            volumetric_heat_source=volumetric_heat_source,
-                            heat_flux_x0=heat_flux_x0,
+                            air_conductivity=air_conductivity,
+                            heat_source_power=heat_source_power,
+                            heat_source_distance=heat_source_distance,
                             convective_h=convective_h,
                             ambient_temperature=ambient_temperature,
                             dx=dx,
                             dy=dy,
                             dz=dz,
+                            lx=lx,
                         )
             max_delta = float(np.max(np.abs(T_new - T)))
             T = T_new
@@ -214,8 +221,10 @@ class CubeThermalSteadyStateSimulator(Simulator):
                 break
 
         flat_temperature = self._flatten_temperature_field(T)
-        centre_temperature = float(T[self.nx // 2, self.ny // 2, self.nz // 2])
-        heated_face_mean_temperature = float(np.mean(T[0, :, :]))
+        centre_i = self.nx // 2
+        centre_temperature = float(T[centre_i, self.ny // 2, self.nz // 2])
+        heated_face_i = min(i for i in range(self.nx) if -heat_source_distance + i * dx >= 0)
+        heated_face_mean_temperature = float(np.mean(T[heated_face_i, :, :]))
         opposite_face_mean_temperature = float(np.mean(T[-1, :, :]))
 
         point_data = {"temperature": flat_temperature.tolist()}
@@ -243,8 +252,8 @@ class CubeThermalSteadyStateSimulator(Simulator):
             "temperature_range": float(np.max(flat_temperature) - np.min(flat_temperature)),
             "input_parameters": {
                 "thermal_conductivity": float(thermal_conductivity),
-                "volumetric_heat_source": float(volumetric_heat_source),
-                "heat_flux_x0": float(heat_flux_x0),
+                "heat_source_power": float(heat_source_power),
+                "heat_source_distance": float(heat_source_distance),
                 "convective_h": float(convective_h),
                 "initial_temperature": float(initial_temperature),
                 "ambient_temperature": float(ambient_temperature),
@@ -292,8 +301,9 @@ class CubeThermalSteadyStateSimulator(Simulator):
         length_x: float | None = None,
         length_y: float | None = None,
         length_z: float | None = None,
+        heat_source_distance: float | None = None,
     ) -> pd.DataFrame:
-        points = self._build_points(length_x=length_x, length_y=length_y, length_z=length_z)
+        points = self._build_points(length_x=length_x, length_y=length_y, length_z=length_z, heat_source_distance=heat_source_distance)
         return pd.DataFrame(points, columns=["x", "y", "z"])
 
     def mesh_elements_to_dataframe(self) -> pd.DataFrame:
@@ -344,21 +354,27 @@ class CubeThermalSteadyStateSimulator(Simulator):
         j: int,
         k: int,
         thermal_conductivity: float,
-        volumetric_heat_source: float,
-        heat_flux_x0: float,
+        air_conductivity: float,
+        heat_source_power: float,
+        heat_source_distance: float,
         convective_h: float,
         ambient_temperature: float,
         dx: float,
         dy: float,
         dz: float,
+        lx: float,
     ) -> float:
         current = T[i, j, k]
         conduction_weight_sum = 0.0
         rhs_sum = 0.0
 
+        x = -heat_source_distance + i * dx
+        k_eff = air_conductivity if x < 0 else thermal_conductivity
+        vol_heat = heat_source_power if x < 0 else 0.0
+
         def add_neighbour(ii: int, jj: int, kk: int, spacing: float) -> None:
             nonlocal conduction_weight_sum, rhs_sum
-            w = thermal_conductivity / (spacing**2)
+            w = k_eff / (spacing**2)
             conduction_weight_sum += w
             rhs_sum += w * T[ii, jj, kk]
 
@@ -375,13 +391,12 @@ class CubeThermalSteadyStateSimulator(Simulator):
         if k < self.nz - 1:
             add_neighbour(i, j, k + 1, dz)
 
-        rhs_sum += volumetric_heat_source
+        rhs_sum += vol_heat
 
         if i == 0:
             w_conv = convective_h / max(dx, 1e-12)
             conduction_weight_sum += w_conv
             rhs_sum += w_conv * ambient_temperature
-            rhs_sum += heat_flux_x0 / max(dx, 1e-12)
         if i == self.nx - 1:
             w_conv = convective_h / max(dx, 1e-12)
             conduction_weight_sum += w_conv
@@ -399,11 +414,12 @@ class CubeThermalSteadyStateSimulator(Simulator):
             return current
         return rhs_sum / conduction_weight_sum
 
-    def _build_points(self, *, length_x: float | None = None, length_y: float | None = None, length_z: float | None = None) -> np.ndarray:
+    def _build_points(self, *, length_x: float | None = None, length_y: float | None = None, length_z: float | None = None, heat_source_distance: float | None = None) -> np.ndarray:
         lx = self.length_x if length_x is None else length_x
         ly = self.length_y if length_y is None else length_y
         lz = self.length_z if length_z is None else length_z
-        xs = np.linspace(0.0, lx, self.nx)
+        d = 0.0 if heat_source_distance is None else heat_source_distance
+        xs = np.linspace(-d, lx, self.nx)
         ys = np.linspace(0.0, ly, self.ny)
         zs = np.linspace(0.0, lz, self.nz)
         points = []

@@ -16,10 +16,10 @@ class ParameterSpec:
 
 DEFAULT_PARAMETER_SPECS = [
     ParameterSpec("thermal_conductivity", 5.0, 25.0),
-    ParameterSpec("volumetric_heat_source", 5.0e3, 4.0e4),
-    ParameterSpec("heat_flux_x0", 5.0e3, 2.5e4),
+    ParameterSpec("heat_source_power", 5.0e3, 4.0e4),
+    ParameterSpec("heat_source_distance", 0.001, 0.1),
     ParameterSpec("convective_h", 2.0, 20.0),
-    ParameterSpec("initial_temperature", 285.15, 315.15),
+    ParameterSpec("initial_temperature", 270., 500.),
 ]
 
 

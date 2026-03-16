@@ -19,8 +19,8 @@ def test_cube_thermal_simulator_forward_runs():
         [
             {
                 "thermal_conductivity": 15.0,
-                "volumetric_heat_source": 1.2e4,
-                "heat_flux_x0": 8.0e3,
+                "heat_source_power": 1.2e4,
+                "heat_source_distance": 0.05,
                 "convective_h": 10.0,
                 "initial_temperature": 293.15,
             }
@@ -49,8 +49,8 @@ def test_summary_dataframe_contains_expected_columns():
         [
             {
                 "thermal_conductivity": 12.0,
-                "volumetric_heat_source": 2.0e4,
-                "heat_flux_x0": 1.5e4,
+                "heat_source_power": 2.0e4,
+                "heat_source_distance": 0.03,
                 "convective_h": 8.0,
                 "initial_temperature": 293.15,
             }
