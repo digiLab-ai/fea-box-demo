@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -36,6 +38,9 @@ DEFAULT_SAMPLING = {
 }
 
 ESTIMATED_SECONDS_PER_SAMPLE = 15.0
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+PROBLEM_SETUP_IMAGE = ASSETS_DIR / "ProblemSetup.png"
+DIGILAB_LOGO = ASSETS_DIR / "digilab-logo.png"
 
 st.set_page_config(page_title="Cube Thermal Demo", layout="wide")
 
@@ -109,27 +114,6 @@ def _parameter_specs_from_config(sampling_config: dict[str, int | str | dict]) -
     ]
 
 
-def _build_setup_markup(active_setup: dict[str, float | int | str] | None) -> str:
-    # if active_setup is None:
-    return """
-    <div class="hero">
-        <h1 style="margin-bottom:0.2rem;">Cube Thermal Steady-State Demo</h1>
-        <p style="margin:0;">
-            Thermal field through a box under steady-state conditions.
-        </p>
-        <p style="margin:0.5rem 0 0;">
-            <strong>Dynamics:</strong> Solves ∇·(k ∇T) + q = 0 with convective boundaries. The x=0 face has convection to an external heat source at T_source.
-        </p>
-        <p style="margin:0.5rem 0 0;">
-            <strong>Inputs:</strong> thermal_conductivity (W/m·K), volumetric_heat_source (W/m³), T_source (K), convective_h (W/m²·K), initial_temperature (K).
-        </p>
-        <p style="margin:0.9rem 0 0;">
-            Configure the mesh and solver below to define the problem setup, then run sampling to generate input and field datasets.
-        </p>
-    </div>
-    """
-
-
 def _build_simulator(active_setup: dict[str, float | int | str]):
     config = CubeThermalSteadyStateConfig(**active_setup)
     return config, simulator_factory(config)
@@ -177,7 +161,12 @@ def _sample_and_evaluate(
 
 
 active_setup = st.session_state.get("active_setup")
-st.markdown(_build_setup_markup(active_setup), unsafe_allow_html=True)
+
+with st.container():
+    logo_col, spacer_col = st.columns([0.22, 0.78])
+
+if PROBLEM_SETUP_IMAGE.exists():
+    st.image(str(PROBLEM_SETUP_IMAGE), use_container_width=True)
 
 setup_expanded = "active_setup" not in st.session_state or st.session_state.get("editing_setup", False)
 with st.expander("Mesh and Solver Setup", expanded=setup_expanded):
