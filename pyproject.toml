@@ -15,7 +15,7 @@ dependencies = [
   "pydantic>=2.5",
   "typeguard>=4.1",
   "streamlit>=1.30",
-  "pytest>=8.0",
+  "pytest>=9.0.3",
 ]
 
 [tool.setuptools]
